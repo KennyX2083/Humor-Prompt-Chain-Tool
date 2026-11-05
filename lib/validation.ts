@@ -1,3 +1,7 @@
+export function isChainId(value: string): boolean {
+  return /^[1-9]\d{0,15}$/.test(value) && Number.isSafeInteger(Number(value));
+}
+
 export const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function imageMime(bytes: Uint8Array): string | null {

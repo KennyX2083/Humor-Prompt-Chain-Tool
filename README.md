@@ -1,59 +1,42 @@
-# Humor Prompt Chain Tool
+# Excuse Queue / Prompt Studio
 
-Standalone Week 8 application in its own Git repository, beside the Week 7 admin application. No changes to the admin app are needed.
+Week 8's separate Next.js app now manages the original project's shared chain system.
 
-## Implemented in source
+## How the projects connect
 
-- Superadmin-only workspace, verified through Supabase Auth and profiles.is_superadmin. Non-admin accounts see an access-denied state. Server actions and database row-level security enforce the same restriction.
-- Create, read, edit, and delete chains and steps. Creating a chain selects it automatically; deleting it returns to the chain list.
-- Move steps up/down. Database functions lock the parent chain to serialize appends, moves, and deletions. Deletions compact the remaining positions.
-- Run a chain from starting text or a PNG/JPEG/WebP image under 2 MB. The first step gets the image; each following step receives the original text and previous output.
-- Generate descriptions, jokes, and captions as text media, matching the assignment's image-to-description-to-captions example. Image/video output generation is not included.
-- Save each completed step's output and instructions immediately. Review history for a particular chain, or All history for runs from all chains including deleted ones.
-- Copy or download each generated text output. History is paginated, ten runs per page.
-- Light, dark, and system appearance; saved in browser storage and synchronized across tabs.
-- Controlled editor fields preserve text after validation or server errors. Deletion requires explicit confirmation.
+- Studio edits prompt_chains, prompt_chain_steps, and prompt_chain_mix in the same Supabase project as the original app/admin.
+- Existing admin chains appear here. New chains start with weight 0; positive weights enter the shared weighted selection pool after at least one step is added.
+- Test runs take Game, Character, and Situation and use the same enabled Google model and step-runner context as the database-backed admin generator.
+- Tests are recorded in generation_request and llm_response and checkpointed in prompt_tool_runs. They do not publish excuses. Shared generator activity shows app and Studio request outputs.
+- The original public app needs the supplied integration/public-app.patch (or four replacement files) and a server-only Supabase key before its hardcoded prompt is replaced. See integration/README.md. Until that route is deployed, public generation remains hardcoded.
+- The older standalone UUID chain tables are preserved, but no longer edited by Studio. Their old runs stay in All Studio test history.
 
-## Verification status
+## Features
 
-The source has been reviewed, but this revision has NOT been linted, type-checked, built, browser-tested, or exercised against the database. No database setup or deployment is performed by editing these files. Use the checklist in VERIFY.md before treating the app as complete.
+Superadmin-only chain/step CRUD; atomic reordering and position compaction; shared selection weights; game-specific character validation; optional image input for tests; per-step saved outputs; copy/download controls; shared request logs; light/dark/system themes. Shared chains retain the original schema's ten-step limit. Each step must return 1–4,000 characters so its final output can become an excuse draft.
 
-## Local setup (WSL)
+## Manual setup and checks
 
-Use Node 24 in WSL for this project. The .nvmrc selects that version with nvm use. Do not alternate Windows and Linux installs in this same node_modules folder.
+No installs, tests, SQL, pushes, or deployments were executed during this integration edit.
 
-1. Open this directory in your WSL terminal and run nvm use.
-2. If dependencies are absent or were installed on Windows, run npm ci --include=optional here. This installs the existing locked versions; do not run it in the admin app.
-3. The existing .env.local is ignored by Git. Confirm it contains NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and GEMINI_API_KEY for your existing Humor Lab project. GEMINI_MODEL is optional; the default is gemini-flash-latest. Never paste secret values into chat or commit them. .env.example contains names only and is tracked.
-4. Review and run database/setup.sql in that project's Supabase SQL Editor. It depends on the existing private.is_superadmin() helper. The whole script runs in one transaction and can be reapplied; it only configures the independent prompt_tool_* objects. If an earlier draft was applied, reapply this version for the new delete/reorder functions.
-5. Add http://localhost:3001/auth/callback to Supabase Auth's redirect allowlist. Keep the existing public/admin callback URLs.
-6. Run npm run lint, npx tsc --noEmit, and npm run build. Stop on errors.
-7. Run npm run dev -- --port 3001 and visit http://localhost:3001. This keeps the admin app's port separate.
+1. Use Node 24 in WSL in this directory (nvm use). Do not alternate Windows and Linux dependency installs.
+2. Keep the same Supabase URL/anon key and GEMINI_API_KEY in ignored .env.local. Studio uses the model configuration in the admin Models page; GEMINI_MODEL is no longer consulted.
+3. Run the ENTIRE updated database/setup.sql in the existing Supabase project, even if an earlier version was installed. It reuses existing tables, adds Studio history links and admin policies, enables management RPCs, and adjusts deletion constraints to preserve log contents. Review integration/README.md for the deletion details. No data is deleted by setup.
+4. Run npm run lint, npx tsc --noEmit, and npm run build. Stop on the first error.
+5. Add http://localhost:3001/auth/callback to Supabase's redirect allowlist and run npm run dev -- --port 3001 if testing locally.
+6. Follow VERIFY.md, then apply the public-app integration and deploy both repos separately.
 
-## Example chain
+## Example gaming chain
 
-Create a chain named Image to funny captions, then add:
+Create Explain the misplay with slug explain-the-misplay and weight 0:
 
-1. Describe image: Describe the supplied image accurately in two or three sentences. Return only the description.
-2. Find the joke: Use the previous description to write one playful, funny observation. Return only the observation.
-3. Write captions: Use the previous observation and original context to write five distinct, short, funny captions. Return a numbered list.
+1. Analyze mistake: Identify the funny contradiction in the supplied game, character, and situation. Return one sentence.
+2. Invent excuse: Turn the previous observation into an absurd first-person gaming excuse. Return only 1–3 short sentences, under 4,000 characters.
 
-Select an image and run the chain. Open its generation history to inspect the three saved outputs and download the captions.
+Test Valorant / Jett / I flashed my team and missed every shot. Once satisfied, set a positive live weight to make the chain eligible for original-app generation after its adapter is deployed. Do not activate an image-dependent chain if the public app supplies no images.
 
-## Limits and recovery
+## Limits and deployment
 
-Chains support 20 steps. Each model call has a timeout of at most 45 seconds and automatic retries are disabled. The application stops generation after approximately four minutes to leave time to record the final status before the route's 300-second deployment limit. Reduce the number or complexity of steps if a run stops for time.
+Generation is budgeted to about four minutes, with per-call timeouts and saved per-step progress. Unfinished old runs are displayed as Interrupted. There is no automatic resume.
 
-Each completed output is saved before the next step starts. If the process is interrupted, history labels an unfinished run Interrupted after five minutes. Refresh history to see saved progress, then rerun the chain. There is no automatic resume. Do not start another run while the current one is working unless you intend to make another model request.
-
-Input images are sent to Gemini but are not persisted in Supabase; the filename is recorded. History stores original text, step instructions, and generated text. Deleting a chain removes its steps but retains runs in All history.
-
-## GitHub and Vercel (after local verification)
-
-- Create an empty GitHub repository named Humor-Prompt-Chain-Tool; commit the reviewed source and push main. The local Git repository is already initialized.
-- Import that repository as a separate Next.js Vercel project named humor-prompt-chain-tool, with the repository root as its root directory and Node 24 selected.
-- Set the same environment variables in Vercel. Keep GEMINI_API_KEY server-only. Redeploy after changing environment variables.
-- Add the resulting HTTPS /auth/callback URL to Supabase Auth's redirect allowlist. Add any specific preview URL you need to test.
-- Disable Vercel Deployment Protection as requested by the assignment. The app still requires Google sign-in and a superadmin profile.
-- Test the deployment in incognito and with both administrator and ordinary accounts.
-- Submit the latest commit-specific deployment URLs for the public app, admin app, and this app. The project alias alone is not a commit-specific URL.
+GitHub/Vercel repositories remain separate. Import this repo as Next.js with Node 24, configure its Supabase URL/anon key and Gemini key, add its HTTPS auth callback in Supabase, and disable Vercel Deployment Protection as required. Keep application sign-in and superadmin checks enabled. Submit commit-specific deployment URLs for public/admin/Studio after verification.
